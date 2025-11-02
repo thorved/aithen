@@ -8,16 +8,23 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - REGISTRY_AUTH=htpasswd
-      - REGISTRY_AUTH_HTPASSWD_REALM=Registry
-      - REGISTRY_AUTH_HTPASSWD_PATH=/auth/registry.password
+      - REGISTRY_AUTH=token
+      - REGISTRY_AUTH_TOKEN_REALM=http://localhost:8080/auth
+      - REGISTRY_AUTH_TOKEN_SERVICE=registry
+      - REGISTRY_AUTH_TOKEN_ISSUER=registry-token-issuer
+      - REGISTRY_AUTH_TOKEN_JWKS=/certs/jwks.json
       - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/data
       - REGISTRY_STORAGE_DELETE_ENABLED=true
     volumes:
-      - ./auth:/auth
-      - ./data:/data
+      - ./data/auth:/auth
+      - ./data/certs:/certs
+      - ./data/registry:/data
+      - ./registry-wait.sh:/wait.sh:ro
     networks:
       - registry-net
+    depends_on:
+      - registry-webui
+    command: ["/bin/sh", "/wait.sh"]
 
   registry-webui:
     build: .
@@ -30,11 +37,14 @@ services:
       - REGISTRY_AUTH_HTPASSWD_PATH=/auth/registry.password
       - WEB_UI_PORT=8080
       - SESSION_SECRET=your-secret-key-change-this
+      - TOKEN_ISSUER=registry-token-issuer
+      - TOKEN_EXPIRATION=900
+      - TOKEN_KEY_PATH=/auth/token.key
+      - ACL_PATH=/auth/acl.json
     volumes:
-      - ./auth:/auth
+      - ./data/auth:/auth
+      - ./data/certs:/certs
       - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - registry
     networks:
       - registry-net
 

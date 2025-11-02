@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -24,6 +25,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize htpasswd auth: %v", err)
 	}
+
+	// Initialize ACL
+	acl, err := auth.NewACL(cfg.ACLPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize ACL: %v", err)
+	}
+	log.Printf("Loaded %d ACL entries", len(acl.Entries))
+
+	// Initialize token service
+	tokenExpiration := time.Duration(cfg.TokenExpiration) * time.Second
+	tokenService, err := auth.NewTokenService(cfg.TokenKeyPath, cfg.TokenIssuer, tokenExpiration, acl)
+	if err != nil {
+		log.Fatalf("Failed to initialize token service: %v", err)
+	}
+	log.Println("Token service initialized successfully")
 
 	// Initialize registry client
 	registryClient := registry.NewClient(cfg.RegistryURL, cfg.RegistryUsername, cfg.RegistryPassword)
@@ -57,7 +73,14 @@ func main() {
 	r.LoadHTMLGlob("templates/*.html")
 
 	// Initialize handlers
-	h := handlers.NewHandler(cfg, htpasswdAuth, registryClient)
+	h := handlers.NewHandler(cfg, htpasswdAuth, registryClient, tokenService)
+
+	// Docker Registry token authentication endpoint (public)
+	r.GET("/auth", h.RegistryAuth)
+	r.GET("/token", h.RegistryAuth) // Some clients use /token
+	r.GET("/auth/publickey", h.GetPublicKey)
+	r.GET("/auth/jwks", h.JWKSHandler) // JWKS endpoint for registry
+	r.GET("/jwks.json", h.JWKSHandler) // Alternative JWKS endpoint
 
 	// Public routes
 	r.GET("/login", h.ShowLoginPage)
@@ -98,6 +121,7 @@ func main() {
 	port := cfg.WebUIPort
 	log.Printf("Starting Registry Web UI on port %s", port)
 	log.Printf("Registry URL: %s", cfg.RegistryURL)
+	log.Printf("Token authentication endpoint: http://localhost:%s/auth", port)
 
 	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)

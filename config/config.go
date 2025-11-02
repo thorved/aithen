@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -14,6 +15,10 @@ type Config struct {
 	SessionSecret    string
 	RegistryUsername string
 	RegistryPassword string
+	TokenIssuer      string
+	TokenExpiration  int
+	TokenKeyPath     string
+	ACLPath          string
 }
 
 func Load() *Config {
@@ -29,6 +34,10 @@ func Load() *Config {
 		SessionSecret:    getEnv("SESSION_SECRET", "default-secret-change-me"),
 		RegistryUsername: getEnv("REGISTRY_USERNAME", ""),
 		RegistryPassword: getEnv("REGISTRY_PASSWORD", ""),
+		TokenIssuer:      getEnv("TOKEN_ISSUER", "registry-token-issuer"),
+		TokenExpiration:  getEnvInt("TOKEN_EXPIRATION", 900), // 15 minutes default
+		TokenKeyPath:     getEnv("TOKEN_KEY_PATH", "/auth/token.key"),
+		ACLPath:          getEnv("ACL_PATH", "/auth/acl.json"),
 	}
 
 	return cfg
@@ -37,6 +46,16 @@ func Load() *Config {
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		var intValue int
+		if _, err := fmt.Sscanf(value, "%d", &intValue); err == nil {
+			return intValue
+		}
 	}
 	return defaultValue
 }

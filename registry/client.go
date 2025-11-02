@@ -11,10 +11,13 @@ import (
 
 // Client represents a Docker Registry v2 API client
 type Client struct {
-	baseURL  string
-	username string
-	password string
-	client   *http.Client
+	baseURL      string
+	username     string
+	password     string
+	client       *http.Client
+	tokenService string               // Token service URL for authentication
+	tokenCache   map[string]string    // Cached tokens per scope
+	expiryCache  map[string]time.Time // Token expiry times per scope
 }
 
 // Repository represents a registry repository
@@ -69,24 +72,86 @@ type ImageInfo struct {
 // NewClient creates a new registry client
 func NewClient(baseURL, username, password string) *Client {
 	return &Client{
-		baseURL:  strings.TrimSuffix(baseURL, "/"),
-		username: username,
-		password: password,
+		baseURL:      strings.TrimSuffix(baseURL, "/"),
+		username:     username,
+		password:     password,
+		tokenService: "http://localhost:8080", // Internal token service
+		tokenCache:   make(map[string]string),
+		expiryCache:  make(map[string]time.Time),
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
 }
 
+// getToken requests a token from the auth service
+func (c *Client) getToken(scope string) (string, error) {
+	// Check if we have a valid cached token for this scope
+	if token, ok := c.tokenCache[scope]; ok {
+		if expiry, ok := c.expiryCache[scope]; ok && time.Now().Before(expiry) {
+			return token, nil
+		}
+	}
+
+	// Request new token
+	tokenURL := fmt.Sprintf("%s/auth?service=registry&scope=%s", c.tokenService, scope)
+	req, err := http.NewRequest("GET", tokenURL, nil)
+	if err != nil {
+		return "", err
+	}
+
+	if c.username != "" && c.password != "" {
+		req.SetBasicAuth(c.username, c.password)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("token request failed: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp struct {
+		Token     string `json:"token"`
+		ExpiresIn int    `json:"expires_in"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return "", err
+	}
+
+	// Cache token for this scope
+	c.tokenCache[scope] = tokenResp.Token
+	c.expiryCache[scope] = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+
+	return tokenResp.Token, nil
+}
+
 // doRequest performs an HTTP request with authentication
 func (c *Client) doRequest(method, path string, acceptHeader string) (*http.Response, error) {
+	return c.doRequestWithScope(method, path, acceptHeader, "")
+}
+
+// doRequestWithScope performs an HTTP request with token authentication
+func (c *Client) doRequestWithScope(method, path string, acceptHeader string, scope string) (*http.Response, error) {
 	url := c.baseURL + path
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	if c.username != "" && c.password != "" {
+	// Try with token authentication first if scope is provided
+	if scope != "" {
+		token, err := c.getToken(scope)
+		if err == nil && token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+	} else if c.username != "" && c.password != "" {
+		// Fallback to basic auth
 		req.SetBasicAuth(c.username, c.password)
 	}
 
@@ -99,12 +164,25 @@ func (c *Client) doRequest(method, path string, acceptHeader string) (*http.Resp
 		return nil, err
 	}
 
+	// If we get 401, try to get a token and retry
+	if resp.StatusCode == http.StatusUnauthorized && scope == "" {
+		resp.Body.Close()
+
+		// Extract scope from WWW-Authenticate header if available
+		authHeader := resp.Header.Get("Www-Authenticate")
+		if strings.Contains(authHeader, "Bearer") {
+			// Retry with catalog scope for listing
+			return c.doRequestWithScope(method, path, acceptHeader, "registry:catalog:*")
+		}
+	}
+
 	return resp, nil
 }
 
 // ListRepositories returns all repositories in the registry
 func (c *Client) ListRepositories() ([]string, error) {
-	resp, err := c.doRequest("GET", "/v2/_catalog", "application/json")
+	// Use catalog scope for listing repositories
+	resp, err := c.doRequestWithScope("GET", "/v2/_catalog", "application/json", "registry:catalog:*")
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +207,8 @@ func (c *Client) ListRepositories() ([]string, error) {
 // ListTags returns all tags for a repository
 func (c *Client) ListTags(repository string) ([]string, error) {
 	path := fmt.Sprintf("/v2/%s/tags/list", repository)
-	resp, err := c.doRequest("GET", path, "application/json")
+	scope := fmt.Sprintf("repository:%s:pull", repository)
+	resp, err := c.doRequestWithScope("GET", path, "application/json", scope)
 	if err != nil {
 		return nil, err
 	}
@@ -155,11 +234,12 @@ func (c *Client) ListTags(repository string) ([]string, error) {
 // GetManifest retrieves the manifest for a specific image tag
 func (c *Client) GetManifest(repository, tag string) (*Manifest, string, error) {
 	path := fmt.Sprintf("/v2/%s/manifests/%s", repository, tag)
+	scope := fmt.Sprintf("repository:%s:pull", repository)
 
 	// Accept both OCI and Docker v2 manifest formats
 	// Registry v3 uses OCI format by default
 	acceptHeader := "application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json,application/vnd.docker.distribution.manifest.list.v2+json"
-	resp, err := c.doRequest("GET", path, acceptHeader)
+	resp, err := c.doRequestWithScope("GET", path, acceptHeader, scope)
 	if err != nil {
 		return nil, "", err
 	}
@@ -266,7 +346,8 @@ func (c *Client) GetBlobConfig(repository, digest string) (*BlobConfig, error) {
 // DeleteImage deletes an image by its digest
 func (c *Client) DeleteImage(repository, digest string) error {
 	path := fmt.Sprintf("/v2/%s/manifests/%s", repository, digest)
-	resp, err := c.doRequest("DELETE", path, "")
+	scope := fmt.Sprintf("repository:%s:delete", repository)
+	resp, err := c.doRequestWithScope("DELETE", path, "", scope)
 	if err != nil {
 		return err
 	}

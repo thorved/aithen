@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"registry-webui/auth"
@@ -17,12 +18,20 @@ func (h *Handler) getRegistryClient(c *gin.Context) *registry.Client {
 	username := session.Get(auth.SessionUserKey)
 	password := session.Get("password")
 
+	// Log for debugging
+	if username != nil {
+		log.Printf("[DEBUG] Creating registry client for user: %s (has password: %v)\n", username, password != nil)
+	} else {
+		log.Println("[DEBUG] No username in session, creating anonymous client")
+	}
+
 	if username != nil && password != nil {
 		return registry.NewClient(h.Config.RegistryURL, username.(string), password.(string))
 	}
 
-	// Fallback to default credentials if session doesn't have them
-	return h.Registry
+	// If no credentials in session, use empty credentials
+	// The client will attempt to get tokens without authentication
+	return registry.NewClient(h.Config.RegistryURL, "", "")
 }
 
 // ShowDashboard renders the main dashboard
@@ -37,9 +46,13 @@ func (h *Handler) ShowDashboard(c *gin.Context) {
 
 // ListRepositories returns all repositories (filters out empty ones)
 func (h *Handler) ListRepositories(c *gin.Context) {
+	log.Println("[DEBUG] ListRepositories called")
 	registryClient := h.getRegistryClient(c)
+	log.Println("[DEBUG] Got registry client")
 	repositories, err := registryClient.ListRepositories()
+	log.Printf("[DEBUG] ListRepositories result: repos=%v, err=%v\n", repositories, err)
 	if err != nil {
+		log.Printf("[ERROR] Failed to fetch repositories: %v\n", err)
 		c.HTML(http.StatusInternalServerError, "error.html", gin.H{
 			"error": fmt.Sprintf("Failed to fetch repositories: %v", err),
 		})
@@ -52,13 +65,16 @@ func (h *Handler) ListRepositories(c *gin.Context) {
 		tags, err := registryClient.ListTags(repo)
 		if err != nil {
 			// If error fetching tags, skip this repo
+			log.Printf("[DEBUG] Skipping repo %s due to error: %v", repo, err)
 			continue
 		}
+		log.Printf("[DEBUG] Repo %s has %d tags: %v", repo, len(tags), tags)
 		// Only include repos that have at least one tag
 		if len(tags) > 0 {
 			filteredRepos = append(filteredRepos, repo)
 		}
 	}
+	log.Printf("[DEBUG] Filtered repos count: %d, repos: %v", len(filteredRepos), filteredRepos)
 
 	c.HTML(http.StatusOK, "repositories.html", gin.H{
 		"repositories": filteredRepos,

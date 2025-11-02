@@ -28,8 +28,12 @@ COPY --from=builder /app/registry-webui .
 # Copy templates
 COPY --from=builder /app/templates ./templates
 
+# Copy entrypoint script
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 # Expose port
 EXPOSE 8080
 
 # Run the application
-CMD ["./registry-webui"]
+ENTRYPOINT ["/app/entrypoint.sh"]

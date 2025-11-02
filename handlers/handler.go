@@ -12,14 +12,16 @@ type Handler struct {
 	Auth         *auth.HtpasswdAuth
 	Registry     *registry.Client
 	TokenService *auth.TokenService
+	TokenStore   *auth.PersonalTokenStore
 }
 
 // NewHandler creates a new handler instance
-func NewHandler(cfg *config.Config, authHandler *auth.HtpasswdAuth, registryClient *registry.Client, tokenService *auth.TokenService) *Handler {
+func NewHandler(cfg *config.Config, authHandler *auth.HtpasswdAuth, registryClient *registry.Client, tokenService *auth.TokenService, tokenStore *auth.PersonalTokenStore) *Handler {
 	return &Handler{
 		Config:       cfg,
 		Auth:         authHandler,
 		Registry:     registryClient,
 		TokenService: tokenService,
+		TokenStore:   tokenStore,
 	}
 }

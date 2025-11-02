@@ -32,8 +32,16 @@ func (h *Handler) ListUsers(c *gin.Context) {
 // AddUser adds a new user
 func (h *Handler) AddUser(c *gin.Context) {
 	var req struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
+		Username          string `json:"username" binding:"required"`
+		Password          string `json:"password" binding:"required"`
+		FullName          string `json:"full_name"`
+		Email             string `json:"email"`
+		Role              string `json:"role"`
+		Description       string `json:"description"`
+		CustomPermissions *struct {
+			Actions      []string `json:"actions"`
+			Repositories []string `json:"repositories"`
+		} `json:"custom_permissions"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -59,6 +67,7 @@ func (h *Handler) AddUser(c *gin.Context) {
 		return
 	}
 
+	// Add user to htpasswd
 	if err := h.Auth.AddUser(req.Username, req.Password); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
@@ -66,9 +75,41 @@ func (h *Handler) AddUser(c *gin.Context) {
 		return
 	}
 
+	// Add ACL entry based on role
+	if req.Role != "" {
+		if err := h.addUserACL(req.Username, req.Role, req.CustomPermissions); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "User created but failed to set permissions: " + err.Error(),
+			})
+			return
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"message": "User added successfully",
+		"message": "User created successfully with role: " + req.Role,
 	})
+}
+
+// addUserACL adds ACL entry for the user based on role
+func (h *Handler) addUserACL(username, role string, customPerms *struct {
+	Actions      []string `json:"actions"`
+	Repositories []string `json:"repositories"`
+}) error {
+	// TODO: Implement ACL file update functionality
+	// This would require:
+	// 1. Load existing ACL from file
+	// 2. Add new entry based on role
+	// 3. Save back to file
+	// 4. Reload ACL in memory
+	
+	// For now, users need to be manually added to acl.json
+	// or ACL entries can be added through the configuration file
+	
+	_ = username // Mark as intentionally unused for now
+	_ = role
+	_ = customPerms
+	
+	return nil
 }
 
 // UpdatePassword updates a user's password

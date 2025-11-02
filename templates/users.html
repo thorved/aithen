@@ -53,14 +53,61 @@
             document.getElementById(modalId).classList.remove('active');
         }
 
+        function updateRoleDescription() {
+            const role = document.getElementById('newUserRole').value;
+            const customSection = document.getElementById('customPermissionsSection');
+            
+            if (role === 'custom') {
+                customSection.classList.remove('hidden');
+            } else {
+                customSection.classList.add('hidden');
+            }
+        }
+
         function addUser() {
             const username = document.getElementById('newUsername').value;
             const password = document.getElementById('newPassword').value;
+            const fullName = document.getElementById('newFullName').value;
+            const email = document.getElementById('newEmail').value;
+            const role = document.getElementById('newUserRole').value;
+            const description = document.getElementById('newDescription').value;
+
+            if (!username || !password) {
+                showNotification('Username and password are required', 'error');
+                return;
+            }
+
+            const userData = {
+                username,
+                password,
+                full_name: fullName,
+                email: email,
+                role: role,
+                description: description
+            };
+
+            // If custom role, add permissions
+            if (role === 'custom') {
+                const actions = [];
+                if (document.getElementById('customPull').checked) actions.push('pull');
+                if (document.getElementById('customPush').checked) actions.push('push');
+                if (document.getElementById('customDelete').checked) actions.push('delete');
+                
+                if (actions.length === 0) {
+                    showNotification('Please select at least one action for custom role', 'error');
+                    return;
+                }
+
+                userData.custom_permissions = {
+                    actions: actions,
+                    repositories: document.getElementById('customRepoPattern').value.split(',').map(r => r.trim())
+                };
+            }
 
             fetch('/api/users', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username, password})
+                body: JSON.stringify(userData)
             })
             .then(response => response.json())
             .then(data => {
@@ -69,8 +116,14 @@
                 } else {
                     showNotification(data.message);
                     hideModal('addUserModal');
+                    // Clear form
                     document.getElementById('newUsername').value = '';
                     document.getElementById('newPassword').value = '';
+                    document.getElementById('newFullName').value = '';
+                    document.getElementById('newEmail').value = '';
+                    document.getElementById('newDescription').value = '';
+                    document.getElementById('newUserRole').value = 'readonly';
+                    updateRoleDescription();
                     location.reload();
                 }
             })
@@ -142,6 +195,12 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                             </svg>
                             Dashboard
+                        </a>
+                        <a href="/tokens" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">
+                            <svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                            </svg>
+                            Access Tokens
                         </a>
                         <a href="/users" class="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 border-b-2 border-blue-600">
                             <svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -230,21 +289,89 @@
 
 <!-- Add User Modal -->
 <div id="addUserModal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full items-center justify-center">
-    <div class="relative mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+    <div class="relative mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white" style="top: 5vh;">
         <div class="mt-3">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Add New User</h3>
             <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                    <input type="text" id="newUsername" 
-                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                           placeholder="Enter username">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Username *</label>
+                        <input type="text" id="newUsername" required
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Enter username">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                        <input type="text" id="newFullName"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Enter full name">
+                    </div>
                 </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+                        <input type="password" id="newPassword" required
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Enter password">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input type="email" id="newEmail"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="user@example.com">
+                    </div>
+                </div>
+
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                    <input type="password" id="newPassword"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                           placeholder="Enter password">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Role *</label>
+                    <select id="newUserRole" onchange="updateRoleDescription()"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="admin">Admin - Full access to all repositories and settings</option>
+                        <option value="developer">Developer - Can push and pull all repositories</option>
+                        <option value="readonly" selected>Read-Only - Can only pull repositories</option>
+                        <option value="custom">Custom - Define specific permissions</option>
+                    </select>
+                </div>
+
+                <div id="customPermissionsSection" class="hidden space-y-3">
+                    <div class="bg-blue-50 border border-blue-200 rounded-md p-3">
+                        <p class="text-sm text-blue-800 font-medium mb-2">Custom Permissions</p>
+                        
+                        <div class="space-y-2">
+                            <label class="block text-sm font-medium text-gray-700">Actions</label>
+                            <div class="space-x-4">
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="customPull" value="pull" class="rounded border-gray-300 text-blue-600">
+                                    <span class="ml-2 text-sm">Pull (Read)</span>
+                                </label>
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="customPush" value="push" class="rounded border-gray-300 text-blue-600">
+                                    <span class="ml-2 text-sm">Push (Write)</span>
+                                </label>
+                                <label class="inline-flex items-center">
+                                    <input type="checkbox" id="customDelete" value="delete" class="rounded border-gray-300 text-blue-600">
+                                    <span class="ml-2 text-sm">Delete</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="mt-3">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Repository Access Pattern</label>
+                            <input type="text" id="customRepoPattern"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                                   placeholder="e.g., * or username/* or specific-repo"
+                                   value="*">
+                            <p class="mt-1 text-xs text-gray-500">Use * for all repos, or specify patterns like "myrepo/*"</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
+                    <textarea id="newDescription" rows="2"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="Additional notes about this user"></textarea>
                 </div>
             </div>
             <div class="flex justify-end space-x-3 mt-6">
@@ -254,7 +381,7 @@
                 </button>
                 <button onclick="addUser()"
                         class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                    Add User
+                    Create User
                 </button>
             </div>
         </div>

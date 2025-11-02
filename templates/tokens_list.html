@@ -1,0 +1,74 @@
+{{ if eq (len .tokens) 0 }}
+<div class="text-center py-12">
+    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+    </svg>
+    <h3 class="mt-2 text-sm font-medium text-gray-900">No tokens</h3>
+    <p class="mt-1 text-sm text-gray-500">Get started by creating a new access token.</p>
+</div>
+{{ else }}
+<ul class="divide-y divide-gray-200">
+    {{ range .tokens }}
+    <li class="px-6 py-4">
+        <div class="flex items-center justify-between">
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center space-x-3">
+                    <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-gray-900">{{ .Name }}</p>
+                        {{ if .Description }}
+                        <p class="text-sm text-gray-500">{{ .Description }}</p>
+                        {{ end }}
+                        <div class="mt-1 flex items-center space-x-4 text-xs text-gray-500">
+                            <span class="font-mono">{{ .Token }}</span>
+                            <span>•</span>
+                            <span>Created {{ .CreatedAt.Format "Jan 2, 2006" }}</span>
+                            {{ if .ExpiresAt }}
+                            <span>•</span>
+                            <span>Expires {{ .ExpiresAt.Format "Jan 2, 2006" }}</span>
+                            {{ else }}
+                            <span>•</span>
+                            <span class="text-green-600">Never expires</span>
+                            {{ end }}
+                            {{ if .LastUsed }}
+                            <span>•</span>
+                            <span>Last used {{ .LastUsed.Format "Jan 2, 2006 15:04" }}</span>
+                            {{ end }}
+                        </div>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            <div class="text-xs">
+                                <span class="font-medium text-gray-700">Permissions:</span>
+                                {{ range .Permissions }}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 ml-1">
+                                    {{ . }}
+                                </span>
+                                {{ end }}
+                            </div>
+                            <div class="text-xs">
+                                <span class="font-medium text-gray-700">Repositories:</span>
+                                {{ range .Repositories }}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 ml-1">
+                                    {{ . }}
+                                </span>
+                                {{ end }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ml-4 flex-shrink-0">
+                <button onclick="deleteToken('{{ .ID }}', '{{ .Name }}')"
+                        class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
+                    <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete
+                </button>
+            </div>
+        </div>
+    </li>
+    {{ end }}
+</ul>
+{{ end }}

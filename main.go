@@ -41,6 +41,13 @@ func main() {
 	}
 	log.Println("Token service initialized successfully")
 
+	// Initialize personal token store
+	tokenStore, err := auth.NewPersonalTokenStore("/auth/personal_tokens.json")
+	if err != nil {
+		log.Fatalf("Failed to initialize token store: %v", err)
+	}
+	log.Println("Personal token store initialized successfully")
+
 	// Initialize registry client
 	registryClient := registry.NewClient(cfg.RegistryURL, cfg.RegistryUsername, cfg.RegistryPassword)
 
@@ -73,7 +80,7 @@ func main() {
 	r.LoadHTMLGlob("templates/*.html")
 
 	// Initialize handlers
-	h := handlers.NewHandler(cfg, htpasswdAuth, registryClient, tokenService)
+	h := handlers.NewHandler(cfg, htpasswdAuth, registryClient, tokenService, tokenStore)
 
 	// Docker Registry token authentication endpoint (public)
 	r.GET("/auth", h.RegistryAuth)
@@ -97,6 +104,9 @@ func main() {
 		// User Management
 		protected.GET("/users", h.UsersPage)
 
+		// Token Management
+		protected.GET("/tokens", h.ShowTokens)
+
 		// API routes
 		api := protected.Group("/api")
 		{
@@ -111,6 +121,11 @@ func main() {
 			api.POST("/users", h.AddUser)
 			api.PUT("/users/:username/password", h.UpdatePassword)
 			api.DELETE("/users/:username", h.DeleteUser)
+
+			// Personal token APIs
+			api.GET("/tokens", h.ListTokens)
+			api.POST("/tokens", h.CreatePersonalToken)
+			api.DELETE("/tokens/:id", h.DeletePersonalToken)
 
 			// Garbage collection
 			api.POST("/gc", h.RunGarbageCollection)

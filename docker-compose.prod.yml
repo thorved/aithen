@@ -1,13 +1,64 @@
-version: '3.8'
+# Docker Compose configuration for PRODUCTION deployment
+# Uses pre-built image from GitHub Container Registry
+# Configured for HTTPS with domain: example.com
 
 services:
+  # Docker Registry v3 - Stores container images
   registry:
+    image: registry:3
+    container_name: docker-registry
+    restart: always
+    ports:
+      - "5000:5000"  # Registry API port
     environment:
-      - REGISTRY_AUTH_TOKEN_REALM=https://hub.ved.yt/auth
-      # Override other settings as needed for production
+      # Token-based authentication
+      - REGISTRY_AUTH=token
+      - REGISTRY_AUTH_TOKEN_REALM=https://example.com/auth  # Production auth endpoint
+      - REGISTRY_AUTH_TOKEN_SERVICE=registry
+      - REGISTRY_AUTH_TOKEN_ISSUER=registry-token-issuer
+      - REGISTRY_AUTH_TOKEN_JWKS=/certs/jwks.json  # JSON Web Key Set for token verification
+      # Storage configuration
+      - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/data
+      - REGISTRY_STORAGE_DELETE_ENABLED=true  # Enable image deletion
+    volumes:
+      - ./data/certs:/certs      # JWT certificates and JWKS
+      - ./data/registry:/data    # Registry blob storage
+    networks:
+      - registry-net
+    depends_on:
+      - aithen
 
+  # Aithen Web UI - Authentication and management interface
   aithen:
+    image: ghcr.io/thorved/aithen:latest  # Production image from GitHub Container Registry
+    container_name: aithen
+    restart: always
+    ports:
+      - "8080:8080"  # Web UI port (use reverse proxy for HTTPS)
     environment:
-      # Add production-specific environment variables
-      - WEBAUTHN_RP_ID=hub.ved.yt
-      - WEBAUTHN_ORIGIN=https://hub.ved.yt
+      # Registry connection (internal Docker network)
+      - REGISTRY_URL=http://registry:5000
+      - REGISTRY_AUTH_HTPASSWD_PATH=/auth/registry.password
+      # Web UI configuration
+      - WEB_UI_PORT=8080
+      - SESSION_SECRET=${SESSION_SECRET}  # Load from .env file - MUST be changed!
+      # Token service configuration
+      - TOKEN_ISSUER=registry-token-issuer
+      - TOKEN_EXPIRATION=900  # 15 minutes
+      - TOKEN_KEY_PATH=/auth/token.key
+      # Access Control List
+      - ACL_PATH=/auth/acl.json
+      # WebAuthn/Passkey configuration for PRODUCTION (HTTPS required)
+      - WEBAUTHN_RPID=example.com         # Relying Party ID (domain)
+      - WEBAUTHN_RPNAME=Aithen Registry  # Display name
+      - WEBAUTHN_ORIGIN=https://example.com  # Full origin URL with HTTPS
+    volumes:
+      - ./data/auth:/auth        # User credentials, tokens, and ACLs
+      - ./data/certs:/certs      # JWT certificates
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for GC operations
+    networks:
+      - registry-net
+
+networks:
+  registry-net:
+    driver: bridge

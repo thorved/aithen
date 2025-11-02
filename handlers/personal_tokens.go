@@ -23,8 +23,9 @@ func (h *Handler) ShowTokens(c *gin.Context) {
 	}
 
 	c.HTML(http.StatusOK, "tokens.html", gin.H{
-		"title":    "Access Tokens",
-		"username": username,
+		"title":      "Access Tokens",
+		"username":   username,
+		"activePage": "tokens",
 	})
 }
 

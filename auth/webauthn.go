@@ -24,12 +24,12 @@ func NewWebAuthnService(rpDisplayName, rpID, rpOrigin string) (*WebAuthnService,
 		// Set timeouts (in milliseconds)
 		Timeouts: webauthn.TimeoutsConfig{
 			Login: webauthn.TimeoutConfig{
-				Enforce:    true,
-				Timeout:    60000, // 60 seconds
+				Enforce: true,
+				Timeout: 60000, // 60 seconds
 			},
 			Registration: webauthn.TimeoutConfig{
-				Enforce:    true,
-				Timeout:    60000, // 60 seconds
+				Enforce: true,
+				Timeout: 60000, // 60 seconds
 			},
 		},
 	}
@@ -159,26 +159,42 @@ func (s *WebAuthnService) FinishDiscoverableLogin(userStore *UserStore, response
 		return nil, nil, fmt.Errorf("session not found for discoverable login")
 	}
 
-	// The userHandle in the response should contain the user ID
-	if response.Response.UserHandle == nil || len(response.Response.UserHandle) == 0 {
-		return nil, nil, fmt.Errorf("user handle not provided in assertion response")
+	// Create a handler that looks up the user by credential ID and user handle
+	userHandler := func(rawID, userHandle []byte) (webauthn.User, error) {
+		// Try looking up by user handle (username) first
+		if userHandle != nil && len(userHandle) > 0 {
+			username := string(userHandle)
+			user, err := userStore.GetUser(username)
+			if err == nil {
+				return user, nil
+			}
+		}
+
+		// Fall back to looking up by credential ID
+		user, err := userStore.GetUserByCredentialID(rawID)
+		if err != nil {
+			return nil, fmt.Errorf("user not found for credential")
+		}
+		return user, nil
 	}
 
-	// Look up user by the credential ID or user handle
-	username := string(response.Response.UserHandle)
-	user, err := userStore.GetUser(username)
+	// Use ValidateDiscoverableLogin for discoverable credentials
+	credential, err := s.webAuthn.ValidateDiscoverableLogin(userHandler, *session, response)
 	if err != nil {
-		// Try looking up by credential ID
+		return nil, nil, fmt.Errorf("failed to validate discoverable login: %v", err)
+	}
+
+	// Look up the user again to return it (ValidateDiscoverableLogin only returns credential)
+	var user *User
+	if response.Response.UserHandle != nil && len(response.Response.UserHandle) > 0 {
+		username := string(response.Response.UserHandle)
+		user, _ = userStore.GetUser(username)
+	}
+	if user == nil {
 		user, err = userStore.GetUserByCredentialID(response.RawID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("user not found for credential")
 		}
-	}
-
-	// Validate the assertion
-	credential, err := s.webAuthn.ValidateLogin(user, *session, response)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to validate discoverable login: %v", err)
 	}
 
 	// Clean up session

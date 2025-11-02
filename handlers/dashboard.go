@@ -39,8 +39,9 @@ func (h *Handler) ShowDashboard(c *gin.Context) {
 	username := auth.GetCurrentUser(c)
 
 	c.HTML(http.StatusOK, "dashboard.html", gin.H{
-		"title":    "Dashboard - Registry Web UI",
-		"username": username,
+		"title":      "Dashboard - Registry Web UI",
+		"username":   username,
+		"activePage": "dashboard",
 	})
 }
 

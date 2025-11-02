@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"net/http"
 
 	"aithen/auth"
@@ -10,6 +12,22 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-webauthn/webauthn/protocol"
 )
+
+// generateSessionToken creates a temporary random token for passkey-authenticated users
+// This token is used as a "password" for registry authentication
+func (h *Handler) generateSessionToken(username string) (string, error) {
+	// Generate a 32-byte random token
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", err
+	}
+	sessionToken := hex.EncodeToString(tokenBytes)
+
+	// Store the session token for authentication
+	h.UserStore.AddSessionToken(username, sessionToken)
+
+	return sessionToken, nil
+}
 
 // BeginPasskeyRegistration starts the passkey registration flow
 func (h *Handler) BeginPasskeyRegistration(c *gin.Context) {
@@ -150,11 +168,17 @@ func (h *Handler) FinishPasskeyLogin(c *gin.Context) {
 		c.Writer.Header().Add("X-Warning", "Failed to update passkey last used timestamp")
 	}
 
+	// Generate a temporary session token for registry authentication
+	sessionToken, err := h.generateSessionToken(username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate session token"})
+		return
+	}
+
 	// Create session and store credentials
 	session := sessions.Default(c)
 	session.Set(auth.SessionUserKey, username)
-	// Note: With passkey login, we don't have a password, so we don't store it
-	// This means registry API calls will need to use personal tokens instead
+	session.Set("password", sessionToken) // Store session token as "password" for registry API calls
 	if err := session.Save(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
 		return
@@ -201,11 +225,17 @@ func (h *Handler) FinishDiscoverablePasskeyLogin(c *gin.Context) {
 		c.Writer.Header().Add("X-Warning", "Failed to update passkey last used timestamp")
 	}
 
+	// Generate a temporary session token for registry authentication
+	sessionToken, err := h.generateSessionToken(user.Username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate session token"})
+		return
+	}
+
 	// Create session and store credentials
 	session := sessions.Default(c)
 	session.Set(auth.SessionUserKey, user.Username)
-	// Note: With passkey login, we don't have a password, so we don't store it
-	// This means registry API calls will need to use personal tokens instead
+	session.Set("password", sessionToken) // Store session token as "password" for registry API calls
 	if err := session.Save(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
 		return
@@ -280,7 +310,9 @@ func (h *Handler) DeletePasskey(c *gin.Context) {
 func (h *Handler) ShowPasskeysPage(c *gin.Context) {
 	username := auth.GetCurrentUser(c)
 	c.HTML(http.StatusOK, "passkeys.html", gin.H{
-		"Username": username,
+		"Username":   username,
+		"username":   username,
+		"activePage": "passkeys",
 	})
 }
 

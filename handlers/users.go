@@ -38,6 +38,7 @@ func (h *Handler) UsersPage(c *gin.Context) {
 		"username":    username,
 		"users":       infos,
 		"currentRole": currentRole,
+		"activePage":  "users",
 	})
 }
 

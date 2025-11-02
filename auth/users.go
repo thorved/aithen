@@ -12,13 +12,14 @@ import (
 
 // User represents a user account
 type User struct {
-	Username  string    `json:"username"`
-	Password  string    `json:"password"` // bcrypt hash
-	Role      string    `json:"role"`     // admin, developer, readonly, custom
-	Email     string    `json:"email,omitempty"`
-	FullName  string    `json:"full_name,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Username  string              `json:"username"`
+	Password  string              `json:"password"` // bcrypt hash
+	Role      string              `json:"role"`     // admin, developer, readonly, custom
+	Email     string              `json:"email,omitempty"`
+	FullName  string              `json:"full_name,omitempty"`
+	Passkeys  *PasskeyCredentials `json:"passkeys,omitempty"`
+	CreatedAt time.Time           `json:"created_at"`
+	UpdatedAt time.Time           `json:"updated_at"`
 }
 
 // UserStore manages user accounts

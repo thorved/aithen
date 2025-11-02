@@ -49,6 +49,17 @@ func main() {
 	}
 	log.Println("Personal token store initialized successfully")
 
+	// Initialize WebAuthn service
+	webAuthnService, err := auth.NewWebAuthnService(
+		cfg.WebAuthnRPName,
+		cfg.WebAuthnRPID,
+		cfg.WebAuthnOrigin,
+	)
+	if err != nil {
+		log.Fatalf("Failed to initialize WebAuthn service: %v", err)
+	}
+	log.Println("WebAuthn service initialized successfully")
+
 	// Initialize registry client
 	registryClient := registry.NewClient(cfg.RegistryURL, cfg.RegistryUsername, cfg.RegistryPassword)
 
@@ -81,7 +92,7 @@ func main() {
 	r.LoadHTMLGlob("templates/*.html")
 
 	// Initialize handlers
-	h := handlers.NewHandler(cfg, userStore, registryClient, tokenService, tokenStore)
+	h := handlers.NewHandler(cfg, userStore, registryClient, tokenService, tokenStore, webAuthnService)
 
 	// Docker Registry token authentication endpoint (public)
 	r.GET("/auth", h.RegistryAuth)
@@ -94,6 +105,10 @@ func main() {
 	r.GET("/login", h.ShowLoginPage)
 	r.POST("/login", h.Login)
 	r.GET("/logout", h.Logout)
+	
+	// Passkey authentication routes (public)
+	r.GET("/auth/passkey/login/begin", h.BeginPasskeyLogin)
+	r.POST("/auth/passkey/login/finish", h.FinishPasskeyLogin)
 
 	// Protected routes
 	protected := r.Group("/")
@@ -107,6 +122,9 @@ func main() {
 
 		// Token Management
 		protected.GET("/tokens", h.ShowTokens)
+		
+		// Passkey Management
+		protected.GET("/passkeys", h.ShowPasskeysPage)
 
 		// API routes
 		api := protected.Group("/api")
@@ -127,6 +145,13 @@ func main() {
 			api.GET("/tokens", h.ListTokens)
 			api.POST("/tokens", h.CreatePersonalToken)
 			api.DELETE("/tokens/:id", h.DeletePersonalToken)
+			
+			// Passkey management APIs
+			api.GET("/passkeys", h.ListPasskeys)
+			api.POST("/passkeys/register/begin", h.BeginPasskeyRegistration)
+			api.POST("/passkeys/register/finish", h.FinishPasskeyRegistration)
+			api.DELETE("/passkeys/:id", h.DeletePasskey)
+			api.PUT("/passkeys/:id/name", h.UpdatePasskeyName)
 
 			// Garbage collection
 			api.POST("/gc", h.RunGarbageCollection)

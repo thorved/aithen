@@ -163,6 +163,57 @@ func (h *Handler) FinishPasskeyLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Login successful"})
 }
 
+// BeginDiscoverablePasskeyLogin starts usernameless passkey login flow
+func (h *Handler) BeginDiscoverablePasskeyLogin(c *gin.Context) {
+	options, _, err := h.WebAuthnService.BeginDiscoverableLogin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin login: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, options)
+}
+
+// FinishDiscoverablePasskeyLogin completes usernameless passkey login flow
+func (h *Handler) FinishDiscoverablePasskeyLogin(c *gin.Context) {
+	// Parse the assertion response
+	var car protocol.CredentialAssertionResponse
+	if err := c.ShouldBindJSON(&car); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	parsedResponse, err := car.Parse()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse response"})
+		return
+	}
+
+	user, credential, err := h.WebAuthnService.FinishDiscoverableLogin(h.UserStore, parsedResponse)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to complete login: " + err.Error()})
+		return
+	}
+
+	// Update last used timestamp
+	if err := h.UserStore.UpdatePasskeyLastUsed(user.Username, credential.ID); err != nil {
+		// Non-fatal error, just log it
+		c.Writer.Header().Add("X-Warning", "Failed to update passkey last used timestamp")
+	}
+
+	// Create session and store credentials
+	session := sessions.Default(c)
+	session.Set(auth.SessionUserKey, user.Username)
+	// Note: With passkey login, we don't have a password, so we don't store it
+	// This means registry API calls will need to use personal tokens instead
+	if err := session.Save(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Login successful"})
+}
+
 // ListPasskeys returns all passkeys for the current user
 func (h *Handler) ListPasskeys(c *gin.Context) {
 	username := auth.GetCurrentUser(c)

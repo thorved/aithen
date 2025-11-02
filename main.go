@@ -109,6 +109,9 @@ func main() {
 	// Passkey authentication routes (public)
 	r.GET("/auth/passkey/login/begin", h.BeginPasskeyLogin)
 	r.POST("/auth/passkey/login/finish", h.FinishPasskeyLogin)
+	// Discoverable/usernameless passkey login
+	r.GET("/auth/passkey/login/discoverable/begin", h.BeginDiscoverablePasskeyLogin)
+	r.POST("/auth/passkey/login/discoverable/finish", h.FinishDiscoverablePasskeyLogin)
 
 	// Protected routes
 	protected := r.Group("/")

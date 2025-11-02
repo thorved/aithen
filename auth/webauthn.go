@@ -47,10 +47,10 @@ func NewWebAuthnService(rpDisplayName, rpID, rpOrigin string) (*WebAuthnService,
 
 // BeginRegistration starts the registration process for a user
 func (s *WebAuthnService) BeginRegistration(user *User) (*protocol.CredentialCreation, *webauthn.SessionData, error) {
-	// Use platform authenticator for passkeys (not cross-platform like USB keys)
+	// Use platform authenticator for passkeys with resident key for discoverable credentials
 	authSelection := protocol.AuthenticatorSelection{
 		AuthenticatorAttachment: protocol.Platform,
-		RequireResidentKey:      protocol.ResidentKeyNotRequired(),
+		RequireResidentKey:      protocol.ResidentKeyRequired(),
 		UserVerification:        protocol.VerificationRequired,
 	}
 
@@ -134,6 +134,57 @@ func (s *WebAuthnService) FinishLogin(user *User, response *protocol.ParsedCrede
 	return credential, nil
 }
 
-// Note: Discoverable/usernameless login (passkey login without entering username first)
-// is not currently implemented. Users must enter their username before using passkey login.
-// This could be added in a future enhancement by implementing proper credential-to-user lookup.
+// BeginDiscoverableLogin starts a usernameless/discoverable login flow
+func (s *WebAuthnService) BeginDiscoverableLogin() (*protocol.CredentialAssertion, *webauthn.SessionData, error) {
+	options, session, err := s.webAuthn.BeginDiscoverableLogin()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to begin discoverable login: %v", err)
+	}
+
+	// Store session with special key for discoverable login
+	s.mu.Lock()
+	s.sessions["__discoverable__"] = session
+	s.mu.Unlock()
+
+	return options, session, nil
+}
+
+// FinishDiscoverableLogin completes a usernameless login by looking up the user
+func (s *WebAuthnService) FinishDiscoverableLogin(userStore *UserStore, response *protocol.ParsedCredentialAssertionData) (*User, *webauthn.Credential, error) {
+	s.mu.RLock()
+	session, exists := s.sessions["__discoverable__"]
+	s.mu.RUnlock()
+
+	if !exists {
+		return nil, nil, fmt.Errorf("session not found for discoverable login")
+	}
+
+	// The userHandle in the response should contain the user ID
+	if response.Response.UserHandle == nil || len(response.Response.UserHandle) == 0 {
+		return nil, nil, fmt.Errorf("user handle not provided in assertion response")
+	}
+
+	// Look up user by the credential ID or user handle
+	username := string(response.Response.UserHandle)
+	user, err := userStore.GetUser(username)
+	if err != nil {
+		// Try looking up by credential ID
+		user, err = userStore.GetUserByCredentialID(response.RawID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("user not found for credential")
+		}
+	}
+
+	// Validate the assertion
+	credential, err := s.webAuthn.ValidateLogin(user, *session, response)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to validate discoverable login: %v", err)
+	}
+
+	// Clean up session
+	s.mu.Lock()
+	delete(s.sessions, "__discoverable__")
+	s.mu.Unlock()
+
+	return user, credential, nil
+}

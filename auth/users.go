@@ -12,27 +12,30 @@ import (
 
 // User represents a user account
 type User struct {
-	Username  string    `json:"username"`
-	Password  string    `json:"password"` // bcrypt hash
-	Role      string    `json:"role"`     // admin, developer, readonly, custom
-	Email     string    `json:"email,omitempty"`
-	FullName  string    `json:"full_name,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Username  string              `json:"username"`
+	Password  string              `json:"password"` // bcrypt hash
+	Role      string              `json:"role"`     // admin, developer, readonly, custom
+	Email     string              `json:"email,omitempty"`
+	FullName  string              `json:"full_name,omitempty"`
+	Passkeys  *PasskeyCredentials `json:"passkeys,omitempty"`
+	CreatedAt time.Time           `json:"created_at"`
+	UpdatedAt time.Time           `json:"updated_at"`
 }
 
 // UserStore manages user accounts
 type UserStore struct {
-	filePath string
-	users    map[string]*User // username -> User
-	mu       sync.RWMutex
+	filePath      string
+	users         map[string]*User  // username -> User
+	sessionTokens map[string]string // sessionToken -> username
+	mu            sync.RWMutex
 }
 
 // NewUserStore creates a new user store
 func NewUserStore(filePath string) (*UserStore, error) {
 	store := &UserStore{
-		filePath: filePath,
-		users:    make(map[string]*User),
+		filePath:      filePath,
+		users:         make(map[string]*User),
+		sessionTokens: make(map[string]string),
 	}
 
 	// Check if file exists
@@ -133,8 +136,28 @@ func (s *UserStore) Authenticate(username, password string) bool {
 		return false
 	}
 
+	// First check if it's a session token
+	if storedUsername, ok := s.sessionTokens[password]; ok && storedUsername == username {
+		return true
+	}
+
+	// Otherwise, check bcrypt password
 	err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	return err == nil
+}
+
+// AddSessionToken stores a session token for a user
+func (s *UserStore) AddSessionToken(username, token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sessionTokens[token] = username
+}
+
+// RemoveSessionToken removes a session token
+func (s *UserStore) RemoveSessionToken(token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.sessionTokens, token)
 }
 
 // GetUser returns a user by username

@@ -71,6 +71,14 @@ func (h *Handler) Login(c *gin.Context) {
 // Logout handles user logout
 func (h *Handler) Logout(c *gin.Context) {
 	session := sessions.Default(c)
+
+	// Remove session token if it exists
+	if password := session.Get("password"); password != nil {
+		if passwordStr, ok := password.(string); ok {
+			h.UserStore.RemoveSessionToken(passwordStr)
+		}
+	}
+
 	session.Clear()
 	session.Save()
 

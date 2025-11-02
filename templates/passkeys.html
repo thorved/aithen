@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passkeys - Aithen</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐳</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+<div class="min-h-screen bg-gray-50">
+    {{ template "header" . }}
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div class="px-4 py-6 sm:px-0">
+            <div class="bg-white shadow-lg rounded-lg p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-900">Manage Passkeys</h2>
+                    <button id="registerPasskeyBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                        Register New Passkey
+                    </button>
+                </div>
+
+                <div id="errorMessage" class="mb-4 bg-red-50 border-l-4 border-red-400 p-4 hidden">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p id="errorText" class="text-sm text-red-700"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="successMessage" class="mb-4 bg-green-50 border-l-4 border-green-400 p-4 hidden">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p id="successText" class="text-sm text-green-700"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                    <h3 class="text-sm font-medium text-gray-900 mb-2">About Passkeys</h3>
+                    <p class="text-sm text-gray-600">
+                        Passkeys provide a secure and convenient way to sign in without passwords. They use your device's biometric authentication (fingerprint, face recognition) or PIN.
+                        Passkeys are stored securely on your device and never leave it.
+                    </p>
+                    <p class="text-sm text-gray-600 mt-2">
+                        <strong>Usernameless Login:</strong> Once you register a passkey, you can log in without entering your username - just click "Sign in with Passkey" on the login page!
+                    </p>
+                    <p class="text-sm text-gray-600 mt-2">
+                        <strong>Note:</strong> When logging in with a passkey, you'll need to use Personal Access Tokens for Docker registry operations instead of password-based authentication.
+                    </p>
+                </div>
+
+                <div id="passkeysList" class="space-y-4">
+                    <!-- Passkeys will be loaded here -->
+                </div>
+
+                <div id="noPasskeys" class="text-center py-8 text-gray-500 hidden">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+                    </svg>
+                    <p class="mt-2">No passkeys registered yet</p>
+                    <p class="text-sm">Click the "Register New Passkey" button above to add one</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Helper functions
+    function base64urlToArrayBuffer(base64url) {
+        const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+        const padding = '='.repeat((4 - base64.length % 4) % 4);
+        const base64Padded = base64 + padding;
+        const rawData = window.atob(base64Padded);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray.buffer;
+    }
+
+    function arrayBufferToBase64url(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = window.btoa(binary);
+        return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    }
+
+    function showError(message) {
+        const errorDiv = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        errorText.textContent = message;
+        errorDiv.classList.remove('hidden');
+        setTimeout(() => errorDiv.classList.add('hidden'), 5000);
+    }
+
+    function showSuccess(message) {
+        const successDiv = document.getElementById('successMessage');
+        const successText = document.getElementById('successText');
+        successText.textContent = message;
+        successDiv.classList.remove('hidden');
+        setTimeout(() => successDiv.classList.add('hidden'), 5000);
+    }
+
+    function formatDate(dateStr) {
+        if (!dateStr) return 'Never';
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return 'Invalid date';
+        return date.toLocaleString();
+    }
+
+    async function loadPasskeys() {
+        try {
+            const response = await fetch('/api/passkeys');
+            if (!response.ok) throw new Error('Failed to load passkeys');
+            
+            const data = await response.json();
+            const passkeys = data.passkeys || [];
+            
+            const listDiv = document.getElementById('passkeysList');
+            const noPasskeysDiv = document.getElementById('noPasskeys');
+            
+            if (passkeys.length === 0) {
+                listDiv.innerHTML = '';
+                noPasskeysDiv.classList.remove('hidden');
+            } else {
+                noPasskeysDiv.classList.add('hidden');
+                listDiv.innerHTML = passkeys.map(passkey => `
+                    <div class="border border-gray-200 rounded-lg p-4">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <h4 class="text-lg font-medium text-gray-900">${passkey.name}</h4>
+                                <div class="mt-2 text-sm text-gray-600">
+                                    <p>Created: ${formatDate(passkey.created_at)}</p>
+                                    <p>Last used: ${formatDate(passkey.last_used_at)}</p>
+                                </div>
+                            </div>
+                            <button onclick="deletePasskey('${passkey.id}')" 
+                                    class="ml-4 text-red-600 hover:text-red-800">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        } catch (error) {
+            showError('Failed to load passkeys: ' + error.message);
+        }
+    }
+
+    async function registerPasskey() {
+        try {
+            const name = prompt('Enter a name for this passkey (e.g., "My Laptop"):');
+            if (!name) return;
+
+            // Begin registration
+            const beginResponse = await fetch('/api/passkeys/register/begin', {
+                method: 'POST'
+            });
+            if (!beginResponse.ok) {
+                const error = await beginResponse.json();
+                throw new Error(error.error || 'Failed to begin registration');
+            }
+
+            const options = await beginResponse.json();
+
+            // Convert challenge and user.id from base64url
+            options.publicKey.challenge = base64urlToArrayBuffer(options.publicKey.challenge);
+            options.publicKey.user.id = base64urlToArrayBuffer(options.publicKey.user.id);
+            
+            // Convert excludeCredentials if present
+            if (options.publicKey.excludeCredentials) {
+                for (let cred of options.publicKey.excludeCredentials) {
+                    cred.id = base64urlToArrayBuffer(cred.id);
+                }
+            }
+
+            // Create the credential
+            const credential = await navigator.credentials.create(options);
+
+            // Prepare the response
+            const credentialResponse = {
+                id: credential.id,
+                rawId: arrayBufferToBase64url(credential.rawId),
+                type: credential.type,
+                response: {
+                    attestationObject: arrayBufferToBase64url(credential.response.attestationObject),
+                    clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON)
+                }
+            };
+
+            // Finish registration
+            const finishResponse = await fetch(`/api/passkeys/register/finish?name=${encodeURIComponent(name)}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(credentialResponse)
+            });
+
+            if (!finishResponse.ok) {
+                const error = await finishResponse.json();
+                throw new Error(error.error || 'Failed to complete registration');
+            }
+
+            showSuccess('Passkey registered successfully!');
+            loadPasskeys();
+
+        } catch (error) {
+            console.error('Registration error:', error);
+            if (error.name === 'NotAllowedError') {
+                showError('Passkey registration was cancelled.');
+            } else {
+                showError('Failed to register passkey: ' + error.message);
+            }
+        }
+    }
+
+    async function deletePasskey(id) {
+        if (!confirm('Are you sure you want to delete this passkey?')) return;
+
+        try {
+            const response = await fetch(`/api/passkeys/${id}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to delete passkey');
+            }
+
+            showSuccess('Passkey deleted successfully!');
+            loadPasskeys();
+
+        } catch (error) {
+            showError('Failed to delete passkey: ' + error.message);
+        }
+    }
+
+    // Event listeners
+    document.getElementById('registerPasskeyBtn').addEventListener('click', registerPasskey);
+
+    // Load passkeys on page load
+    loadPasskeys();
+
+    // Check if WebAuthn is supported
+    if (!window.PublicKeyCredential) {
+        document.getElementById('registerPasskeyBtn').disabled = true;
+        showError('Passkeys are not supported in this browser.');
+    }
+</script>
+</body>
+</html>
+

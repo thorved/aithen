@@ -19,6 +19,9 @@ type Config struct {
 	TokenExpiration  int
 	TokenKeyPath     string
 	ACLPath          string
+	WebAuthnRPID     string
+	WebAuthnRPName   string
+	WebAuthnOrigin   string
 }
 
 func Load() *Config {
@@ -38,6 +41,9 @@ func Load() *Config {
 		TokenExpiration:  getEnvInt("TOKEN_EXPIRATION", 900), // 15 minutes default
 		TokenKeyPath:     getEnv("TOKEN_KEY_PATH", "/auth/token.key"),
 		ACLPath:          getEnv("ACL_PATH", "/auth/acl.json"),
+		WebAuthnRPID:     getEnv("WEBAUTHN_RPID", "localhost"),
+		WebAuthnRPName:   getEnv("WEBAUTHN_RPNAME", "Aithen Registry"),
+		WebAuthnOrigin:   getEnv("WEBAUTHN_ORIGIN", "http://localhost:8080"),
 	}
 
 	return cfg

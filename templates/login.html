@@ -35,15 +35,30 @@
             </div>
             {{ end }}
 
-            <form class="space-y-6" action="/login" method="POST">
+            <div id="errorMessage" class="mb-4 bg-red-50 border-l-4 border-red-400 p-4 hidden">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p id="errorText" class="text-sm text-red-700"></p>
+                    </div>
+                </div>
+            </div>
+
+            <form class="space-y-6" action="/login" method="POST" id="loginForm">
                 <div>
                     <label for="username" class="block text-sm font-medium text-gray-700">
                         Username
                     </label>
                     <div class="mt-1">
                         <input id="username" name="username" type="text" required
-                               class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                               class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                               placeholder="Enter username for password login">
                     </div>
+                    <p class="mt-1 text-xs text-gray-500">Optional for passkey login</p>
                 </div>
 
                 <div>
@@ -59,12 +74,240 @@
                 <div>
                     <button type="submit"
                             class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                        Sign in
+                        Sign in with Password
                     </button>
                 </div>
             </form>
+
+            <div class="mt-6">
+                <div class="relative">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-gray-300"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span class="px-2 bg-white text-gray-500">Or continue with</span>
+                    </div>
+                </div>
+
+                <div class="mt-6">
+                    <button type="button" id="passkeyLogin"
+                            class="w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+                        </svg>
+                        Sign in with Passkey
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
+
+<script>
+    // Check if WebAuthn is supported
+    const isWebAuthnSupported = () => {
+        return window.PublicKeyCredential !== undefined && 
+               navigator.credentials !== undefined;
+    };
+
+    // Helper to convert base64url to ArrayBuffer
+    function base64urlToArrayBuffer(base64url) {
+        const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+        const padding = '='.repeat((4 - base64.length % 4) % 4);
+        const base64Padded = base64 + padding;
+        const rawData = window.atob(base64Padded);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray.buffer;
+    }
+
+    // Helper to convert ArrayBuffer to base64url
+    function arrayBufferToBase64url(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = window.btoa(binary);
+        return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    }
+
+    // Show error message
+    function showError(message) {
+        const errorDiv = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        errorText.textContent = message;
+        errorDiv.classList.remove('hidden');
+    }
+
+    // Hide error message
+    function hideError() {
+        const errorDiv = document.getElementById('errorMessage');
+        errorDiv.classList.add('hidden');
+    }
+
+    // Handle passkey login
+    document.getElementById('passkeyLogin').addEventListener('click', async () => {
+        hideError();
+
+        if (!isWebAuthnSupported()) {
+            showError('Passkeys are not supported in this browser.');
+            return;
+        }
+
+        const username = document.getElementById('username').value;
+
+        try {
+            // Try discoverable login first (no username needed)
+            if (!username) {
+                await performDiscoverableLogin();
+            } else {
+                // If username provided, use traditional passkey login
+                await performUsernamePasskeyLogin(username);
+            }
+        } catch (error) {
+            console.error('Passkey login error:', error);
+            if (error.name === 'NotAllowedError') {
+                showError('Passkey authentication was cancelled.');
+            } else {
+                showError('Passkey authentication failed: ' + error.message);
+            }
+        }
+    });
+
+    // Perform discoverable/usernameless login
+    async function performDiscoverableLogin() {
+        // Begin discoverable login
+        const beginResponse = await fetch('/auth/passkey/login/discoverable/begin');
+        if (!beginResponse.ok) {
+            const error = await beginResponse.json();
+            showError(error.error || 'Failed to begin passkey login');
+            return;
+        }
+
+        const options = await beginResponse.json();
+
+        // Convert challenge from base64url
+        options.publicKey.challenge = base64urlToArrayBuffer(options.publicKey.challenge);
+
+        // Get the credential
+        const credential = await navigator.credentials.get(options);
+
+        // Prepare the response
+        const credentialResponse = {
+            id: credential.id,
+            rawId: arrayBufferToBase64url(credential.rawId),
+            type: credential.type,
+            response: {
+                authenticatorData: arrayBufferToBase64url(credential.response.authenticatorData),
+                clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON),
+                signature: arrayBufferToBase64url(credential.response.signature),
+                userHandle: credential.response.userHandle ? arrayBufferToBase64url(credential.response.userHandle) : undefined
+            }
+        };
+
+        // Finish discoverable login
+        const finishResponse = await fetch('/auth/passkey/login/discoverable/finish', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(credentialResponse)
+        });
+
+        if (!finishResponse.ok) {
+            const error = await finishResponse.json();
+            showError(error.error || 'Failed to complete passkey login');
+            return;
+        }
+
+        // Success! Redirect to dashboard
+        window.location.href = '/';
+    }
+
+    // Perform username-based passkey login
+    async function performUsernamePasskeyLogin(username) {
+        // Begin passkey login
+        const beginResponse = await fetch(`/auth/passkey/login/begin?username=${encodeURIComponent(username)}`);
+        if (!beginResponse.ok) {
+            const error = await beginResponse.json();
+            showError(error.error || 'Failed to begin passkey login');
+            return;
+        }
+
+        const options = await beginResponse.json();
+
+        // Convert challenge and allowCredentials from base64url
+        options.publicKey.challenge = base64urlToArrayBuffer(options.publicKey.challenge);
+        if (options.publicKey.allowCredentials) {
+            for (let cred of options.publicKey.allowCredentials) {
+                cred.id = base64urlToArrayBuffer(cred.id);
+            }
+        }
+
+        // Get the credential
+        const credential = await navigator.credentials.get(options);
+
+        // Prepare the response
+        const credentialResponse = {
+            id: credential.id,
+            rawId: arrayBufferToBase64url(credential.rawId),
+            type: credential.type,
+            response: {
+                authenticatorData: arrayBufferToBase64url(credential.response.authenticatorData),
+                clientDataJSON: arrayBufferToBase64url(credential.response.clientDataJSON),
+                signature: arrayBufferToBase64url(credential.response.signature),
+                userHandle: credential.response.userHandle ? arrayBufferToBase64url(credential.response.userHandle) : undefined
+            }
+        };
+
+        // Finish passkey login
+        const finishResponse = await fetch(`/auth/passkey/login/finish?username=${encodeURIComponent(username)}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(credentialResponse)
+        });
+
+        if (!finishResponse.ok) {
+            const error = await finishResponse.json();
+            showError(error.error || 'Failed to complete passkey login');
+            return;
+        }
+
+        // Success! Redirect to dashboard
+        window.location.href = '/';
+    }
+
+    // Disable passkey button if not supported
+    if (!isWebAuthnSupported()) {
+        const passkeyButton = document.getElementById('passkeyLogin');
+        passkeyButton.disabled = true;
+        passkeyButton.classList.add('opacity-50', 'cursor-not-allowed');
+        passkeyButton.title = 'Passkeys are not supported in this browser';
+    }
+
+    // Auto-trigger passkey login on page load (if supported)
+    window.addEventListener('load', () => {
+        if (isWebAuthnSupported()) {
+            // Small delay to ensure page is fully rendered
+            setTimeout(async () => {
+                // Only auto-trigger if there's no error message (not a failed login redirect)
+                const hasError = {{ if .error }}true{{ else }}false{{ end }};
+                if (!hasError) {
+                    try {
+                        await performDiscoverableLogin();
+                    } catch (error) {
+                        // Silently fail for auto-trigger - user can still click button manually
+                        console.log('Auto passkey login cancelled or failed:', error.message);
+                    }
+                }
+            }, 500); // 500ms delay for better UX
+        }
+    });
+</script>
 </body>
 </html>

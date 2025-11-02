@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"net/http"
 
 	"aithen/auth"
@@ -185,7 +186,7 @@ func (h *Handler) ListPasskeys(c *gin.Context) {
 	passkeys := make([]gin.H, len(user.Passkeys.Credentials))
 	for i, cred := range user.Passkeys.Credentials {
 		passkeys[i] = gin.H{
-			"id":           string(cred.ID),
+			"id":           base64.URLEncoding.EncodeToString(cred.ID),
 			"name":         cred.Name,
 			"created_at":   cred.CreatedAt,
 			"last_used_at": cred.LastUsedAt,
@@ -203,13 +204,20 @@ func (h *Handler) DeletePasskey(c *gin.Context) {
 		return
 	}
 
-	credentialID := c.Param("id")
-	if credentialID == "" {
+	credentialIDStr := c.Param("id")
+	if credentialIDStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Credential ID is required"})
 		return
 	}
 
-	if err := h.UserStore.RemovePasskey(username, []byte(credentialID)); err != nil {
+	// Decode base64 credential ID
+	credentialID, err := base64.URLEncoding.DecodeString(credentialIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid credential ID format"})
+		return
+	}
+
+	if err := h.UserStore.RemovePasskey(username, credentialID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete passkey: " + err.Error()})
 		return
 	}
@@ -233,9 +241,16 @@ func (h *Handler) UpdatePasskeyName(c *gin.Context) {
 		return
 	}
 
-	credentialID := c.Param("id")
-	if credentialID == "" {
+	credentialIDStr := c.Param("id")
+	if credentialIDStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Credential ID is required"})
+		return
+	}
+
+	// Decode base64 credential ID
+	credentialID, err := base64.URLEncoding.DecodeString(credentialIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid credential ID format"})
 		return
 	}
 
@@ -247,7 +262,7 @@ func (h *Handler) UpdatePasskeyName(c *gin.Context) {
 		return
 	}
 
-	if err := h.UserStore.UpdatePasskeyName(username, []byte(credentialID), req.Name); err != nil {
+	if err := h.UserStore.UpdatePasskeyName(username, credentialID, req.Name); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update passkey name: " + err.Error()})
 		return
 	}

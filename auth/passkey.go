@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -44,17 +45,8 @@ func (u *User) GetCredentialByID(id []byte) *Credential {
 		return nil
 	}
 	for _, cred := range u.Passkeys.Credentials {
-		if len(cred.ID) == len(id) {
-			match := true
-			for i := range cred.ID {
-				if cred.ID[i] != id[i] {
-					match = false
-					break
-				}
-			}
-			if match {
-				return cred
-			}
+		if bytes.Equal(cred.ID, id) {
+			return cred
 		}
 	}
 	return nil
@@ -73,18 +65,9 @@ func (u *User) RemoveCredential(id []byte) bool {
 		return false
 	}
 	for i, cred := range u.Passkeys.Credentials {
-		if len(cred.ID) == len(id) {
-			match := true
-			for j := range cred.ID {
-				if cred.ID[j] != id[j] {
-					match = false
-					break
-				}
-			}
-			if match {
-				u.Passkeys.Credentials = append(u.Passkeys.Credentials[:i], u.Passkeys.Credentials[i+1:]...)
-				return true
-			}
+		if bytes.Equal(cred.ID, id) {
+			u.Passkeys.Credentials = append(u.Passkeys.Credentials[:i], u.Passkeys.Credentials[i+1:]...)
+			return true
 		}
 	}
 	return false

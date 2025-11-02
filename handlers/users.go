@@ -101,14 +101,14 @@ func (h *Handler) addUserACL(username, role string, customPerms *struct {
 	// 2. Add new entry based on role
 	// 3. Save back to file
 	// 4. Reload ACL in memory
-	
+
 	// For now, users need to be manually added to acl.json
 	// or ACL entries can be added through the configuration file
-	
+
 	_ = username // Mark as intentionally unused for now
 	_ = role
 	_ = customPerms
-	
+
 	return nil
 }
 

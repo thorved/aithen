@@ -111,21 +111,6 @@ func (s *WebAuthnService) BeginLogin(user *User) (*protocol.CredentialAssertion,
 	return options, session, nil
 }
 
-// BeginDiscoverableLogin starts a discoverable/usernameless login
-func (s *WebAuthnService) BeginDiscoverableLogin() (*protocol.CredentialAssertion, *webauthn.SessionData, error) {
-	options, session, err := s.webAuthn.BeginDiscoverableLogin()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to begin discoverable login: %v", err)
-	}
-
-	// Store session with special key for discoverable login
-	s.mu.Lock()
-	s.sessions["__discoverable__"] = session
-	s.mu.Unlock()
-
-	return options, session, nil
-}
-
 // FinishLogin completes the login/authentication process
 func (s *WebAuthnService) FinishLogin(user *User, response *protocol.ParsedCredentialAssertionData) (*webauthn.Credential, error) {
 	s.mu.RLock()
@@ -149,28 +134,6 @@ func (s *WebAuthnService) FinishLogin(user *User, response *protocol.ParsedCrede
 	return credential, nil
 }
 
-// FinishDiscoverableLogin completes a discoverable login
-func (s *WebAuthnService) FinishDiscoverableLogin(response *protocol.ParsedCredentialAssertionData) (*webauthn.Credential, error) {
-	s.mu.RLock()
-	session, exists := s.sessions["__discoverable__"]
-	s.mu.RUnlock()
-
-	if !exists {
-		return nil, fmt.Errorf("session not found for discoverable login")
-	}
-
-	credential, err := s.webAuthn.ValidateDiscoverableLogin(func(rawID, userHandle []byte) (webauthn.User, error) {
-		// This should never be called in our implementation
-		return nil, fmt.Errorf("discoverable login not fully supported")
-	}, *session, response)
-	if err != nil {
-		return nil, fmt.Errorf("failed to validate discoverable login: %v", err)
-	}
-
-	// Clean up session
-	s.mu.Lock()
-	delete(s.sessions, "__discoverable__")
-	s.mu.Unlock()
-
-	return credential, nil
-}
+// Note: Discoverable/usernameless login (passkey login without entering username first)
+// is not currently implemented. Users must enter their username before using passkey login.
+// This could be added in a future enhancement by implementing proper credential-to-user lookup.

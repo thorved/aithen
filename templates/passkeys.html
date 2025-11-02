@@ -83,6 +83,9 @@
                         Passkeys provide a secure and convenient way to sign in without passwords. They use your device's biometric authentication (fingerprint, face recognition) or PIN.
                         Passkeys are stored securely on your device and never leave it.
                     </p>
+                    <p class="text-sm text-gray-600 mt-2">
+                        <strong>Note:</strong> When logging in with a passkey, you'll need to use Personal Access Tokens for Docker registry operations instead of password-based authentication.
+                    </p>
                 </div>
 
                 <div id="passkeysList" class="space-y-4">
@@ -142,7 +145,9 @@
     }
 
     function formatDate(dateStr) {
+        if (!dateStr) return 'Never';
         const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return 'Invalid date';
         return date.toLocaleString();
     }
 

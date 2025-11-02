@@ -34,7 +34,11 @@ type Manifest struct {
 	Config        ManifestConfig         `json:"config"`
 	Layers        []ManifestLayer        `json:"layers"`
 	Architecture  string                 `json:"architecture,omitempty"`
+	OS            string                 `json:"os,omitempty"`
 	RawData       map[string]interface{} `json:"-"`
+	// OCI-specific fields
+	ArtifactType string            `json:"artifactType,omitempty"`
+	Annotations  map[string]string `json:"annotations,omitempty"`
 }
 
 // ManifestConfig represents the config in a manifest
@@ -152,8 +156,9 @@ func (c *Client) ListTags(repository string) ([]string, error) {
 func (c *Client) GetManifest(repository, tag string) (*Manifest, string, error) {
 	path := fmt.Sprintf("/v2/%s/manifests/%s", repository, tag)
 
-	// Try to get the manifest with the v2 schema
-	acceptHeader := "application/vnd.docker.distribution.manifest.v2+json,application/vnd.oci.image.manifest.v1+json"
+	// Accept both OCI and Docker v2 manifest formats
+	// Registry v3 uses OCI format by default
+	acceptHeader := "application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json,application/vnd.docker.distribution.manifest.list.v2+json"
 	resp, err := c.doRequest("GET", path, acceptHeader)
 	if err != nil {
 		return nil, "", err
@@ -178,6 +183,20 @@ func (c *Client) GetManifest(repository, tag string) (*Manifest, string, error) 
 		return nil, "", err
 	}
 
+	// Handle both OCI and Docker manifest formats
+	// Set default values if not present
+	if manifest.Architecture == "" {
+		// Try to parse from raw data if available
+		var rawManifest map[string]interface{}
+		if err := json.Unmarshal(body, &rawManifest); err == nil {
+			if config, ok := rawManifest["config"].(map[string]interface{}); ok {
+				if arch, ok := config["architecture"].(string); ok {
+					manifest.Architecture = arch
+				}
+			}
+		}
+	}
+
 	return &manifest, digest, nil
 }
 
@@ -193,17 +212,55 @@ func (c *Client) GetImageInfo(repository, tag string) (*ImageInfo, error) {
 		totalSize += layer.Size
 	}
 
+	// Get architecture from manifest or fetch from config blob
+	architecture := manifest.Architecture
+	if architecture == "" && manifest.Config.Digest != "" {
+		// Try to fetch architecture from config blob
+		configInfo, err := c.GetBlobConfig(repository, manifest.Config.Digest)
+		if err == nil && configInfo != nil {
+			architecture = configInfo.Architecture
+		}
+	}
+
 	info := &ImageInfo{
 		Repository:   repository,
 		Tag:          tag,
 		Digest:       digest,
 		Size:         totalSize,
 		Layers:       len(manifest.Layers),
-		Architecture: manifest.Architecture,
+		Architecture: architecture,
 		CreatedAt:    time.Now(), // Would need to parse from config blob
 	}
 
 	return info, nil
+}
+
+// BlobConfig represents the configuration from a config blob
+type BlobConfig struct {
+	Architecture string `json:"architecture"`
+	OS           string `json:"os"`
+	Created      string `json:"created"`
+}
+
+// GetBlobConfig retrieves and parses a config blob
+func (c *Client) GetBlobConfig(repository, digest string) (*BlobConfig, error) {
+	path := fmt.Sprintf("/v2/%s/blobs/%s", repository, digest)
+	resp, err := c.doRequest("GET", path, "application/json")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch config blob: %d", resp.StatusCode)
+	}
+
+	var config BlobConfig
+	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
 }
 
 // DeleteImage deletes an image by its digest

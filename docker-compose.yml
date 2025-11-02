@@ -19,12 +19,10 @@ services:
       - ./data/auth:/auth
       - ./data/certs:/certs
       - ./data/registry:/data
-      - ./registry-wait.sh:/wait.sh:ro
     networks:
       - registry-net
     depends_on:
       - aithen
-    command: ["/bin/sh", "/wait.sh"]
 
   aithen:
     build: .
